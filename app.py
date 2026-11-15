@@ -1,15 +1,11 @@
 import streamlit as st
 import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import json
-import random
 import os
-import time
-from model import CustomBrainNet
-from train import bag_of_words, tokenize
-import train  # Imports the training logic to auto-train if needed
 
 # --- Page & Dark ChatGPT-Style UI Config ---
-st.set_page_config(page_title="My Scratch AI", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="My Real Scratch AI", page_icon="🤖", layout="centered")
 
 st.markdown("""
     <style>
@@ -21,117 +17,104 @@ st.markdown("""
 
 MEMORY_FILE = "memory.json"
 
-# --- Load Memory & Personalization ---
+# --- Load Memory & Custom Instructions ---
 def load_memory():
     if os.path.exists(MEMORY_FILE):
         with open(MEMORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"user_name": "Boss", "ai_vibe": "direct and helpful", "custom_facts": [], "messages": []}
+    return {
+        "system_prompt": "You are a helpful, smart personal AI assistant.",
+        "messages": []
+    }
 
 def save_memory(data):
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-memory = load_memory()
+memory_data = load_memory()
 
-# --- Auto-Train & Load Your PyTorch Neural Network ---
+# --- Load Real Open-Source AI Model from Hugging Face ---
 @st.cache_resource
-def load_brain():
-    # If brain.pth doesn't exist on Streamlit cloud, automatically run training!
-    if not os.path.exists("brain.pth"):
-        train.main()  # We will wrap train.py logic or it runs on import
+def load_ai_model():
+    # Using Microsoft's DialoGPT - a free, lightweight conversational transformer model
+    model_name = "microsoft/DialoGPT-small"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    return tokenizer, model
 
-    with open('intents.json', 'r', encoding='utf-8') as f:
-        intents = json.load(f)
-        
-    data = torch.load("brain.pth", map_location=torch.device('cpu'))
-    model = CustomBrainNet(data["input_size"], data["hidden_size"], data["output_size"])
-    model.load_state_dict(data["model_state"])
-    model.eval()
-    return model, data["all_words"], data["tags"], intents
+tokenizer, model = load_ai_model()
 
-model, all_words, tags, intents = load_brain()
-
-# --- Sidebar: Personalization & Memory Bank ---
+# --- Sidebar: Custom Instructions & Controls ---
 with st.sidebar:
-    st.title("🧠 AI Customization")
+    st.title("⚙️ AI Customization")
+    st.caption("Give your AI personality rules or instructions.")
     
-    new_name = st.text_input("What should the AI call you?", value=memory["user_name"])
-    new_vibe = st.text_area("Personality / Custom Instructions", value=memory["ai_vibe"], height=100)
+    custom_instructions = st.text_area(
+        "Custom Instructions / System Prompt",
+        value=memory_data["system_prompt"],
+        height=150
+    )
     
-    if st.button("💾 Save Customization", use_container_width=True):
-        memory["user_name"] = new_name
-        memory["ai_vibe"] = new_vibe
-        save_memory(memory)
-        st.success("Personalization saved!")
-
-    st.divider()
-    st.subheader("📌 Permanent Memory Bank")
-    if memory["custom_facts"]:
-        for fact in memory["custom_facts"]:
-            st.markdown(f"- {fact}")
-    else:
-        st.caption("No facts saved yet. Type 'remember that [fact]' in chat!")
+    if st.button("💾 Save Instructions", use_container_width=True):
+        memory_data["system_prompt"] = custom_instructions
+        save_memory(memory_data)
+        st.success("Instructions updated!")
 
     st.divider()
     if st.button("🗑️ Clear Chat History", use_container_width=True):
-        memory["messages"] = []
-        save_memory(memory)
+        memory_data["messages"] = []
+        save_memory(memory_data)
         st.rerun()
 
-# --- Main Chat Screen ---
-st.title("🧠 Custom Scratch AI")
+# --- Main Chat Interface ---
+st.title("🤖 Real Custom Generative AI")
 
-for msg in memory["messages"]:
+# Display past chat history
+for msg in memory_data["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-def generate_reply(user_text):
-    lower_text = user_text.lower()
-
-    if "remember that " in lower_text:
-        fact = user_text.split("remember that ", 1)[1].strip()
-        memory["custom_facts"].append(fact)
-        save_memory(memory)
-        return f"Got it, {memory['user_name']}. Saved to my permanent memory: *\"{fact}\"*"
-
-    tokens = tokenize(user_text)
-    X = bag_of_words(tokens, all_words)
-    X = X.reshape(1, X.shape[0])
-    X = torch.from_numpy(X)
-
-    output = model(X)
-    _, predicted = torch.max(output, dim=1)
-    tag = tags[predicted.item()]
-    probs = torch.softmax(output, dim=1)
-    confidence = probs[0][predicted.item()].item()
-
-    facts_str = ", ".join(memory["custom_facts"]) if memory["custom_facts"] else "nothing saved yet"
-    
-    if confidence > 0.60:
-        for intent in intents["intents"]:
-            if intent["tag"] == tag:
-                raw_reply = random.choice(intent["responses"])
-                return raw_reply.format(name=memory["user_name"], vibe=memory["ai_vibe"], facts=facts_str)
-    
-    return f"I'm still learning that phrase, {memory['user_name']}! Try asking me something else or update my `intents.json`."
-
-if prompt := st.chat_input("Talk to your custom AI..."):
+# Chat Input Box
+if prompt := st.chat_input("Message your AI..."):
+    # 1. Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
-    memory["messages"].append({"role": "user", "content": prompt})
-    save_memory(memory)
+    memory_data["messages"].append({"role": "user", "content": prompt})
+    save_memory(memory_data)
 
+    # 2. Generate Real AI Response
     with st.chat_message("assistant"):
-        placeholder = st.empty()
-        reply = generate_reply(prompt)
-        typed_text = ""
-        for word in reply.split(" "):
-            typed_text += word + " "
-            placeholder.markdown(typed_text + "▌")
-            time.sleep(0.03)
-        placeholder.markdown(reply)
-
-    memory["messages"].append({"role": "assistant", "content": reply})
-    save_memory(memory)
- 
+        with st.spinner("AI is thinking..."):
+            try:
+                # Encode user input and add chat history context
+                new_user_input_ids = tokenizer.encode(prompt + tokenizer.eos_token, return_tensors='pt')
+                
+                # Append to chat history if exists
+                bot_input_ids = new_user_input_ids
+                
+                # Generate response tokens
+                chat_history_ids = model.generate(
+                    bot_input_ids, 
+                    max_length=1000, 
+                    pad_token_id=tokenizer.eos_token_id,
+                    no_repeat_ngram_size=3,
+                    do_sample=True,
+                    top_k=50,
+                    top_p=0.95,
+                    temperature=0.7
+                )
+                
+                # Decode the response
+                response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
+                
+                if not response.strip():
+                    response = "That's interesting! Tell me more about that."
+                
+                st.markdown(response)
+                
+                # Save assistant response to memory
+                memory_data["messages"].append({"role": "assistant", "content": response})
+                save_memory(memory_data)
+                
+            except Exception as e:
+                st.error(f"Error generating response: {e}")
