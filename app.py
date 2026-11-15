@@ -5,7 +5,7 @@ import json
 import os
 
 # --- Page & Dark ChatGPT-Style UI Config ---
-st.set_page_config(page_title="My Real Scratch AI", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="My Custom AI", page_icon="🧠", layout="centered")
 
 st.markdown("""
     <style>
@@ -23,7 +23,7 @@ def load_memory():
         with open(MEMORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {
-        "system_prompt": "You are a helpful, smart personal AI assistant.",
+        "system_prompt": "You are a smart, direct, and helpful personal AI assistant.",
         "messages": []
     }
 
@@ -33,13 +33,15 @@ def save_memory(data):
 
 memory_data = load_memory()
 
-# --- Load Real Open-Source AI Model from Hugging Face ---
+# --- Load Real Instruction-Tuned AI Model ---
 @st.cache_resource
 def load_ai_model():
-    # Using Microsoft's DialoGPT - a free, lightweight conversational transformer model
-    model_name = "microsoft/DialoGPT-small"
+    model_name = "Qwen/Qwen2.5-0.5B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float32
+    )
     return tokenizer, model
 
 tokenizer, model = load_ai_model()
@@ -47,10 +49,9 @@ tokenizer, model = load_ai_model()
 # --- Sidebar: Custom Instructions & Controls ---
 with st.sidebar:
     st.title("⚙️ AI Customization")
-    st.caption("Give your AI personality rules or instructions.")
     
     custom_instructions = st.text_area(
-        "Custom Instructions / System Prompt",
+        "Custom Instructions / Personality",
         value=memory_data["system_prompt"],
         height=150
     )
@@ -58,7 +59,7 @@ with st.sidebar:
     if st.button("💾 Save Instructions", use_container_width=True):
         memory_data["system_prompt"] = custom_instructions
         save_memory(memory_data)
-        st.success("Instructions updated!")
+        st.success("Instructions saved!")
 
     st.divider()
     if st.button("🗑️ Clear Chat History", use_container_width=True):
@@ -67,54 +68,49 @@ with st.sidebar:
         st.rerun()
 
 # --- Main Chat Interface ---
-st.title("🤖 Real Custom Generative AI")
+st.title("🧠 Custom AI Assistant")
 
-# Display past chat history
 for msg in memory_data["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Chat Input Box
 if prompt := st.chat_input("Message your AI..."):
-    # 1. Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
     memory_data["messages"].append({"role": "user", "content": prompt})
     save_memory(memory_data)
 
-    # 2. Generate Real AI Response
     with st.chat_message("assistant"):
-        with st.spinner("AI is thinking..."):
+        with st.spinner("Thinking..."):
             try:
-                # Encode user input and add chat history context
-                new_user_input_ids = tokenizer.encode(prompt + tokenizer.eos_token, return_tensors='pt')
-                
-                # Append to chat history if exists
-                bot_input_ids = new_user_input_ids
-                
-                # Generate response tokens
-                chat_history_ids = model.generate(
-                    bot_input_ids, 
-                    max_length=1000, 
-                    pad_token_id=tokenizer.eos_token_id,
-                    no_repeat_ngram_size=3,
-                    do_sample=True,
-                    top_k=50,
-                    top_p=0.95,
-                    temperature=0.7
+                # Build conversation with your custom instructions + recent chat memory
+                conversation = [{"role": "system", "content": memory_data["system_prompt"]}]
+                conversation.extend(memory_data["messages"][-10:])  # Keeps last 10 messages in context
+
+                text = tokenizer.apply_chat_template(
+                    conversation,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                model_inputs = tokenizer([text], return_tensors="pt")
+
+                generated_ids = model.generate(
+                    **model_inputs,
+                    max_new_tokens=256,
+                    temperature=0.7,
+                    do_sample=True
                 )
                 
-                # Decode the response
-                response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-                
-                if not response.strip():
-                    response = "That's interesting! Tell me more about that."
-                
+                # Trim out the prompt so only the AI's new reply shows
+                generated_ids = [
+                    output_ids[len(input_ids):] 
+                    for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+                ]
+                response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
                 st.markdown(response)
-                
-                # Save assistant response to memory
                 memory_data["messages"].append({"role": "assistant", "content": response})
                 save_memory(memory_data)
-                
+
             except Exception as e:
-                st.error(f"Error generating response: {e}")
+                st.error(f"Error: {e}")
