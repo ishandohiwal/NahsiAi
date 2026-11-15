@@ -1,0 +1,45 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": ["Hi", "Hey", "Yo", "Hello", "Whats up", "Good morning", "Sup"],
+      "responses": [
+        "Yo {name}! What are we building today?",
+        "Hey {name}, I'm online and ready. What's on your mind?",
+        "Sup {name}! Hit me with whatever you need."
+      ]
+    },
+    {
+      "tag": "identity",
+      "patterns": ["Who are you", "What are you", "Are you real", "Tell me about yourself"],
+      "responses": [
+        "I am your custom neural network built from scratch in Python. Current mode: {vibe}.",
+        "I'm your personal AI—trained on your own data, running 100% locally with zero APIs."
+      ]
+    },
+    {
+      "tag": "memory_check",
+      "patterns": ["Do you remember me", "What do you know about me", "Who am I", "Check memory"],
+      "responses": [
+        "Of course, {name}. Here is what I have locked in my memory bank: {facts}",
+        "I remember everything we talk about, {name}. Saved facts: {facts}"
+      ]
+    },
+    {
+      "tag": "coding",
+      "patterns": ["Help me code", "Python help", "GitHub project", "Write code", "Bug fix"],
+      "responses": [
+        "Let's ship it, {name}. Paste your code or tell me the logic you want to build.",
+        "Ready to code. Keeping things {vibe}—what language or feature are we tackling?"
+      ]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": ["Bye", "See you", "Catch you later", "I am leaving", "Peace"],
+      "responses": [
+        "Later {name}! Your chat history is saved.",
+        "Peace out {name}. I'll remember everything when you get back."
+      ]
+    }
+  ]
+}
